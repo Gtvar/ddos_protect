@@ -1,0 +1,93 @@
+version: '3.6'
+services:
+  telegraf:
+    platform: linux/amd64
+    image: telegraf:1.18-alpine
+    container_name: ddos_telegraf
+    volumes:
+    - ./telegraf/etc/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - influxdb
+      - server
+      - protected
+    links:
+      - influxdb
+      - server
+      - protected
+    ports:
+    - '127.0.0.1:8125:8125/udp'
+    networks:
+      - ddos
+
+  influxdb:
+    platform: linux/amd64
+    image: influxdb:1.8-alpine
+    container_name: ddos_influxdb
+    env_file: configuration.env
+    ports:
+      - '127.0.0.1:8086:8086'
+    volumes:
+      - ./:/imports
+      - influxdb_data:/var/lib/influxdb
+    networks:
+      - ddos
+
+  grafana:
+    image: grafana/grafana:8.0.2
+    container_name: ddos_grafana
+    depends_on:
+      - influxdb
+    env_file: configuration.env
+    links:
+      - influxdb
+    ports:
+      - '127.0.0.1:3000:3000'
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+      - ./grafana/dashboards/:/var/lib/grafana/dashboards/
+    networks:
+      - ddos
+
+  server:
+    image: nginx:latest
+    container_name: ddos_server
+    ports:
+      - "8080:80"
+    restart: always
+    volumes:
+      - ./server/nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - ddos
+
+  protected:
+    image: nginx:latest
+    container_name: ddos_protected
+    ports:
+      - "8081:80"
+    restart: always
+    volumes:
+      - ./protected/nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - ddos
+
+  kali:
+    image: kalilinux/kali-rolling
+    container_name: ddos_kali
+    restart: always
+    depends_on:
+      - server
+      - protected
+    links:
+      - server
+      - protected
+    networks:
+      - ddos
+
+volumes:
+  grafana_data: {}
+  influxdb_data: {}
+
+networks:
+  ddos: ~
